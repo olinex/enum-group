@@ -23,23 +23,58 @@ enum Number {
     Unknown(usize)
 }
 
-// will auto generate function `fn is_odd(&self) -> bool`
+// Will auto generate function `fn is_odd(&self) -> bool`
 assert!(Number::One.is_odd());
 assert!(!Number::Two.is_odd());
 assert!(Number::Three.is_odd());
 assert!(!Number::Unknown(0).is_odd());
 
-// will auto generate function `fn is_even(&self) -> bool`
+// Will auto generate function `fn is_even(&self) -> bool`
 assert!(!Number::One.is_even());
 assert!(Number::Two.is_even());
 assert!(!Number::Three.is_even());
 assert!(!Number::Unknown(0).is_even());
 
-// will auto generate function `fn is_prime(&self) -> bool`
+// Will auto generate function `fn is_prime(&self) -> bool`
 assert!(!Number::One.is_prime());
 assert!(Number::Two.is_prime());
 assert!(Number::Three.is_prime());
 assert!(!Number::Unknown(0).is_prime());
+```
+
+// Sometimes, you may have a large number of group label names with the same prefix, 
+// and you can use this nested grouping to reduce code duplication.
+// It support multi-level nesting.
+```rust
+use enum_group::EnumGroup;
+
+#[derive(EnumGroup)]
+enum Typing {
+    
+    #[groups(accept(eq, ne, gt, gte, lt, lte), number)]
+    I8,
+
+    #[groups(accept(not, eq, ne))]
+    Bool,
+}
+
+assert!(!Typing::I8.is_accept_not());
+assert!(Typing::I8.is_accept_eq());
+assert!(Typing::I8.is_accept_ne());
+assert!(Typing::I8.is_accept_gt());
+assert!(Typing::I8.is_accept_gte());
+assert!(Typing::I8.is_accept_lt());
+assert!(Typing::I8.is_accept_lte());
+assert!(Typing::I8.is_number());
+
+assert!(Typing::Bool.is_accept_not());
+assert!(Typing::Bool.is_accept_eq());
+assert!(Typing::Bool.is_accept_ne());
+assert!(!Typing::Bool.is_accept_gt());
+assert!(!Typing::Bool.is_accept_gte());
+assert!(!Typing::Bool.is_accept_lt());
+assert!(!Typing::Bool.is_accept_lte());
+assert!(!Typing::Bool.is_number());
 ```
 
 ## Usage Restrictions
