@@ -45,9 +45,9 @@
 //! assert!(!Number::Unknown(0).is_prime());
 //! ```
 //! 
-//! // Sometimes, you may have a large number of group label names with the same prefix, 
-//! // and you can use this nested grouping to reduce code duplication.
-//! // It support multi-level nesting.
+//! Sometimes, you may have a large number of group label names with the same prefix, 
+//! and you can use this nested grouping to reduce code duplication.
+//! It support multi-level nesting.
 //! ```rust
 //! use enum_group::EnumGroup;
 //! 
