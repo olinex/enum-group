@@ -22,40 +22,70 @@ pub struct EnumGroupContext<'a> {
 }
 
 impl<'a> EnumGroupContext<'a> {
+    // Extract the label name ident from path and check de ident format
+    fn extract_label_ident(path: &syn::Path) -> syn::Result<syn::Ident> {
+        if let Some(i) = path.get_ident() {
+            let s = i.to_string();
+            if s.chars().any(|c| !(c.is_alphanumeric() || c == '_')) {
+                return Err(syn::Error::new_spanned(
+                    path,
+                    "groups attribute ident can only contain the characters a-zA-Z0-9_",
+                ));
+            }
+            if s.starts_with('_') {
+                return Err(syn::Error::new_spanned(
+                    path,
+                    "groups attribute ident must starts wtih characters a-zA-Z",
+                ));
+            }
+            if s.ends_with('_') {
+                return Err(syn::Error::new_spanned(
+                    path,
+                    "groups attribute ident must ends wtih characters a-zA-Z",
+                ));
+            }
+            Ok(i.clone())
+        } else {
+            Err(syn::Error::new_spanned(
+                path,
+                "unknown item in sub groups attribute",
+            ))
+        }
+    }
 
-    // Extract the label name ident in the group attribute
+    // Extract the label name idents in the group attribute
     fn extract_label_idents(nested: MetaNested) -> syn::Result<Vec<syn::Ident>> {
         let mut labels: Vec<_> = Vec::new();
-        for nest in nested.iter() {
-            if let syn::NestedMeta::Meta(syn::Meta::Path(path)) = nest {
-                if let Some(i) = path.get_ident() {
-                    let s = i.to_string();
-                    if s.chars().any(|c| !(c.is_alphanumeric() || c == '_')) {
-                        return Err(syn::Error::new_spanned(
-                            nest,
-                            "groups attribute ident can only contain the characters a-zA-Z0-9_",
-                        ));
+        for nest in nested.into_iter() {
+            match nest {
+                syn::NestedMeta::Meta(syn::Meta::Path(path)) => {
+                    let label = Self::extract_label_ident(&path)?;
+                    labels.push(label);
+                }
+                syn::NestedMeta::Meta(syn::Meta::List(syn::MetaList {
+                    ref path, nested, ..
+                })) => {
+                    let suffix_ident = Self::extract_label_ident(path)?;
+                    let sub_label_idents = Self::extract_label_idents(nested)?;
+                    for sub_label_ident in sub_label_idents.into_iter() {
+                        let concat_ident = syn::Ident::new(
+                            &format!(
+                                "{}_{}",
+                                suffix_ident.to_string(),
+                                sub_label_ident.to_string()
+                            ),
+                            sub_label_ident.span(),
+                        );
+                        labels.push(concat_ident);
                     }
-                    if s.starts_with('_') {
-                        return Err(syn::Error::new_spanned(
-                            nest,
-                            "groups attribute ident must starts wtih characters a-zA-Z",
-                        ));
-                    }
-                    if s.ends_with('_') {
-                        return Err(syn::Error::new_spanned(
-                            nest,
-                            "groups attribute ident must ends wtih characters a-zA-Z",
-                        ));
-                    }
-                    labels.push(i.clone());
-                    continue;
+                }
+                _ => {
+                    return Err(syn::Error::new_spanned(
+                        nest,
+                        "unknown item in groups attribute",
+                    ))
                 }
             }
-            return Err(syn::Error::new_spanned(
-                nest,
-                "unknown item in groups attribute",
-            ));
         }
         Ok(labels)
     }

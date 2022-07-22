@@ -6,7 +6,7 @@ will auto generate function `is_label1` and `is_label2`.
 These functions will tell you if a variant of the enum belongs to this grouping.
 
 ## Example
-```
+```rust
 use enum_group::EnumGroup;
 
 #[derive(EnumGroup)]
@@ -46,7 +46,7 @@ assert!(!Number::Unknown(0).is_prime());
 Each character of the group label name for each variant must be alphanumeric or `_`.
 
 ## Panic
-```
+```rust
 use enum_group::EnumGroup;
 
 #[derive(EnumGroup)]
