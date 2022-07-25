@@ -7,7 +7,7 @@
 use quote::quote;
 use std::collections::HashMap;
 use std::vec::Vec;
-use syn::{punctuated, token};
+use syn::{punctuated, spanned::Spanned, token};
 
 // use self mods
 
@@ -18,30 +18,33 @@ pub struct EnumGroupContext<'a> {
     visible: &'a syn::Visibility,
     name: &'a syn::Ident,
     generics: &'a syn::Generics,
+    variants: &'a Variants,
     groups: HashMap<syn::Ident, Vec<syn::Variant>>,
 }
 
 impl<'a> EnumGroupContext<'a> {
-    // Extract the label name ident from path and check de ident format
+    // Extract the label name ident from path and check the ident format
     fn extract_label_ident(path: &syn::Path) -> syn::Result<syn::Ident> {
         if let Some(i) = path.get_ident() {
             let s = i.to_string();
-            if s.chars().any(|c| !(c.is_alphanumeric() || c == '_')) {
+            if s.chars()
+                .any(|c| !(c.is_alphanumeric() || c == '_') || c.is_ascii_uppercase())
+            {
                 return Err(syn::Error::new_spanned(
                     path,
-                    "groups attribute ident can only contain the characters a-zA-Z0-9_",
+                    "groups attribute ident can only contain the characters a-z0-9_",
                 ));
             }
             if s.starts_with('_') {
                 return Err(syn::Error::new_spanned(
                     path,
-                    "groups attribute ident must starts wtih characters a-zA-Z",
+                    "groups attribute ident must starts wtih characters a-z",
                 ));
             }
             if s.ends_with('_') {
                 return Err(syn::Error::new_spanned(
                     path,
-                    "groups attribute ident must ends wtih characters a-zA-Z",
+                    "groups attribute ident must ends wtih characters a-z",
                 ));
             }
             Ok(i.clone())
@@ -91,7 +94,7 @@ impl<'a> EnumGroupContext<'a> {
     }
 
     // Extract variants of enumeration types that have the `groups` attribute declared
-    fn extract_nested_meta(attributes: &'a Vec<syn::Attribute>) -> syn::Result<Option<MetaNested>> {
+    fn extract_nested_meta(attributes: &Vec<syn::Attribute>) -> syn::Result<Option<MetaNested>> {
         let mut result = None;
         for attribute in attributes.iter() {
             let meta = attribute.parse_meta()?;
@@ -119,15 +122,20 @@ impl<'a> EnumGroupContext<'a> {
     }
 
     // Extract enumerated group label names and their associated variants
-    fn extract_groups(
-        variants: &'a Variants,
-    ) -> syn::Result<HashMap<syn::Ident, Vec<syn::Variant>>> {
+    fn extract_groups(variants: &Variants) -> syn::Result<HashMap<syn::Ident, Vec<syn::Variant>>> {
         let mut groups: HashMap<syn::Ident, Vec<syn::Variant>> = HashMap::new();
         for variant in variants.iter() {
             let meta = Self::extract_nested_meta(&variant.attrs)?;
             if let Some(nested) = meta {
                 let idents = Self::extract_label_idents(nested)?;
                 for ident in idents.iter() {
+                    if ident.to_string().to_lowercase() == variant.ident.to_string().to_lowercase()
+                    {
+                        return Err(syn::Error::new_spanned(
+                            variant,
+                            "conflict group label name and viriant name. group name cannot equal to variant name",
+                        ));
+                    }
                     match groups.get_mut(ident) {
                         Some(items) => items.push(variant.clone()),
                         None => {
@@ -161,12 +169,16 @@ impl<'a> EnumGroupContext<'a> {
             name,
             groups,
             generics,
+            variants,
         })
     }
 
     // Generate a new ident by prefixing the group label name with "is_"
     fn gen_group_label_ident(label: &syn::Ident) -> syn::Ident {
-        syn::Ident::new(&format!("is_{}", label.to_string()), label.span())
+        syn::Ident::new(
+            &format!("is_{}", label.to_string().to_lowercase()),
+            label.span(),
+        )
     }
 
     // Generate different arms based on three different variant patterns of the enum type
@@ -189,6 +201,29 @@ impl<'a> EnumGroupContext<'a> {
                 )
             }
         }
+    }
+
+    // Generate a function that returns the name of each variant
+    fn gen_variant_name_fn_expr(&self) -> proc_macro2::TokenStream {
+        let visible = self.visible;
+        let variant_arms: Vec<_> = self
+            .variants
+            .iter()
+            .map(|v| Self::gen_variant_arm(v))
+            .collect();
+        let variant_names: Vec<_> = self
+            .variants
+            .iter()
+            .map(|v| syn::LitStr::new(&v.ident.to_string(), v.span()))
+            .collect();
+        quote!(
+            #[inline]
+            #visible fn variant_name(&self) -> &str {
+                match self {
+                    #(Self::#variant_arms => #variant_names),*
+                }
+            }
+        )
     }
 
     // Generate a judgment function for a group label name
@@ -219,14 +254,28 @@ impl<'a> EnumGroupContext<'a> {
             .collect()
     }
 
+    // Generate a serial of judgment functions for a group label name
+    fn gen_variant_group_fn_exprs(&self) -> Vec<proc_macro2::TokenStream> {
+        self.variants
+            .iter()
+            .map(|variant| self.gen_group_fn_expr(&variant.ident, &vec![variant.clone()]))
+            .collect()
+    }
+
     // Generate a trait inheritance declaration that includes a group label name judgment function
     pub fn generate(&self) -> syn::Result<proc_macro2::TokenStream> {
         let name = self.name;
         let generics = self.generics;
         let group_fn_exprs = self.gen_group_fn_exprs();
+        let variant_group_fn_exprs = self.gen_variant_group_fn_exprs();
+        let variant_name_fn_expr = self.gen_variant_name_fn_expr();
         let st = quote!(
             impl #generics #name #generics {
                 #(#group_fn_exprs)*
+
+                #(#variant_group_fn_exprs)*
+
+                #variant_name_fn_expr
             }
         );
         Ok(st)
